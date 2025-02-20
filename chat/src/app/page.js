@@ -69,9 +69,9 @@ export default function Chat() {
       <div className="w-full bg-gray-800 text-white py-4 px-8 flex items-center justify-between shadow-lg">
         <h1 className="text-2xl sm:text-3xl font-extrabold">SGBD</h1>
         <div className="space-x-4">
-          <Link href="#"><Button className="text-sm sm:text-lg bg-gray-600 text-white py-2 px-4 hover:bg-gray-700">Devoir</Button></Link>
-          <Link href="#"><Button className="text-sm sm:text-lg bg-gray-600 text-white py-2 px-4 hover:bg-gray-700">IA</Button></Link>
-          <Link href="#"><Button className="text-sm sm:text-lg bg-blue-400 text-white py-2 px-4 hover:bg-blue-300">Logout</Button></Link>
+          <Link href="#"><Button className="text-sm sm:text-lg bg-gray-600 text-white py-2 px-4 hover:bg-gray-700 italic">Devoir</Button></Link>
+          <Link href="#"><Button className="text-sm sm:text-lg bg-gray-600 text-white py-2 px-4 hover:bg-gray-700 italic">IA</Button></Link>
+          <Link href="#"><Button className="text-sm sm:text-lg bg-blue-400 text-white py-2 px-4 hover:bg-blue-300 italic">Logout</Button></Link>
         </div>
       </div>
 
