@@ -52,14 +52,14 @@ export default function Chat() {
     } catch (err) {
       setError("Failed to connect to the server.");
       setLoading(false);
-      setMessage(""); // Reset input field after error
+      setMessage(""); 
       setTimeout(() => {
-        setError(""); // Reset error after 3 seconds
-      }, 3000); // You can change this duration to suit your preference
+        setError("");
+      }, 3000); 
     }
 
     setLoading(false);
-    setMessage(""); // Clear input field after sending
+    setMessage(""); 
   };
 
   return (
