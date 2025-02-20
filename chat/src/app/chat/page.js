@@ -76,12 +76,12 @@ export default function Chat() {
       </div>
 
       {/* Chat Messages */}
-      <div className="flex flex-col flex-grow overflow-y-auto p-4 bg-gray-50 shadow-inner">
+      <div className="flex flex-col flex-grow overflow-y-auto p-4 bg-gray-50 shadow-inner space-y-4">
         {chatHistory.length === 0 ? (
           <div className="text-xl sm:text-2xl text-center text-gray-500 italic py-10">Start the conversation</div>
         ) : (
           chatHistory.map((chat, index) => (
-            <div key={index} className="space-y-2">
+            <div key={index} className="space-y-4"> {/* Added space between messages */}
               <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="bg-gradient-to-r from-gray-600 to-gray-500 text-white p-3 w-fit self-end shadow-lg">
                 {chat.user}
               </motion.div>
@@ -92,7 +92,8 @@ export default function Chat() {
           ))
         )}
         <div ref={chatEndRef}></div>
-      </div>
+        </div>
+
 
       {/* Input & Send Button (Fixed at Bottom) */}
       <div className="flex items-center space-x-4 p-4 border-t-2 border-gray-300 bg-white">
