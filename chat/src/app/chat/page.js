@@ -25,7 +25,7 @@ export default function Chat() {
     setResponse("");
 
     try {
-      const res = await fetch("http://18.116.49.13:8000/api/generate/", {
+      const res = await fetch("https://a0h7h8xck0.execute-api.us-east-2.amazonaws.com/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chat: message }),
