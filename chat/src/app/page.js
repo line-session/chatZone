@@ -71,7 +71,7 @@ export default function Chat() {
         <div className="space-x-4">
           <Link href="#"><Button className="text-sm sm:text-lg bg-gray-600 text-white py-2 px-4 hover:bg-gray-700">Devoir</Button></Link>
           <Link href="#"><Button className="text-sm sm:text-lg bg-gray-600 text-white py-2 px-4 hover:bg-gray-700">IA</Button></Link>
-          <Link href="#"><Button className="text-sm sm:text-lg bg-blue-400 text-white py-2 px-4 hover:bg-blue-300">Se Déconnecter</Button></Link>
+          <Link href="#"><Button className="text-sm sm:text-lg bg-blue-400 text-white py-2 px-4 hover:bg-blue-300">Logout</Button></Link>
         </div>
       </div>
 
