@@ -17,15 +17,16 @@ export default function Chat() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [isNavOpen, setIsNavOpen] = useState(false);
-  const chatEndRef = useRef
+  const chatEndRef = useRef(null);
 
   const fetchChatHistory = async () => {
     try {
-      const res = await fetch("https://fluffy-trout-xp695wxrg79fp7g7-8000.app.github.dev/api/discussion/");
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/discussion/`);
+      if (!res.ok) throw new Error("Failed to load history.");
       const data = await res.json();
       setChatHistory(data);
     } catch (err) {
-      console.error("Failed to fetch history:", err);
+      console.error(err);
     }
   };
 
@@ -43,19 +44,16 @@ export default function Chat() {
     setError("");
 
     try {
-      const res = await fetch(
-        "https://a0h7h8xck0.execute-api.us-east-2.amazonaws.com/api/generate",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat: message }),
-        }
-      );
+      const res = await fetch(`${process.env.NEXT_PUBLIC_CHAT_API_URL}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat: message }),
+      });
 
       if (!res.ok) throw new Error("Server is not active, please try again later.");
 
       const data = await res.json();
-      setChatHistory([...chatHistory, { user: message, bot: data.message || "No response" }]);
+      setChatHistory((prev) => [...prev, { user: message, bot: data.message || "No response" }]);
     } catch (err) {
       setError(err.message);
     }
