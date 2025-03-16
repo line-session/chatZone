@@ -21,7 +21,7 @@ export default function Chat() {
 
   const fetchChatHistory = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/discussion/`);
+      const res = await fetch("https://psychic-acorn-gpw4r5x9rwh95x7-8000.app.github.dev/api/discussion/");
       if (!res.ok) throw new Error("Failed to load history.");
       const data = await res.json();
       setChatHistory(data);
@@ -42,9 +42,8 @@ export default function Chat() {
 
     setLoading(true);
     setError("");
-
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_CHAT_API_URL}/generate`, {
+      const res = await fetch("https://6qcqybb72a.execute-api.us-east-2.amazonaws.com/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chat: message }),
