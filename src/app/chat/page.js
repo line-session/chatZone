@@ -141,7 +141,7 @@ export default function Chat() {
               onClick={createNewDiscussion} 
               className="mr-3 text-green-600 flex items-center"
             >
-              <PlusCircle className="w-6 h-6 mr-2" />
+              <PlusCircle className="justify-right 44w-6 h-6 mr-2" />
               New Discussion
             </button>
           </div>
