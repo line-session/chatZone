@@ -9,11 +9,12 @@ import { Loader2 } from "lucide-react";
 export default function Home() {
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
   useEffect(() => {
     async function fetchExams() {
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/work/student/stats/", {
+        const response = await fetch(`${API_BASE_URL}/api/work/student/stats/`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("jwt")}`,
           },

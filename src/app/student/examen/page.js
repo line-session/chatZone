@@ -22,6 +22,9 @@ export default function StudentAssignments() {
   const [submitSuccess, setSubmitSuccess] = useState("");
   const router = useRouter();
 
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+
   useEffect(() => {
     fetchAssignments();
   }, []);
@@ -29,7 +32,7 @@ export default function StudentAssignments() {
   const fetchAssignments = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/exams/", {
+      const res = await fetch(`${API_BASE_URL}/api/exams/`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -50,7 +53,7 @@ export default function StudentAssignments() {
     setSubmitError("");
     setSubmitSuccess("");
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/exams/${id}/`, {
+      const res = await fetch(`${API_BASE_URL}/api/exams/${id}/`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -70,7 +73,7 @@ export default function StudentAssignments() {
 
   const checkSubmission = async (assignmentId) => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/work/student/${assignmentId}/`, {
+      const res = await fetch(`${API_BASE_URL}/api/work/student/${assignmentId}/`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -138,7 +141,7 @@ export default function StudentAssignments() {
         commentLength: commentaire.length
       });
       
-      const res = await fetch("http://127.0.0.1:8000/api/work/submit/", {
+      const res = await fetch(`${API_BASE_URL}/api/work/submit/`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${localStorage.getItem("jwt")}`,

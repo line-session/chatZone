@@ -28,6 +28,9 @@ export default function ExamList() {
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef(null);
 
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+  
+    
   useEffect(() => {
     fetchExams();
   }, []);
@@ -35,7 +38,7 @@ export default function ExamList() {
   const fetchExams = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/exams/", {
+      const res = await fetch(`${API_BASE_URL}/api/exams/`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -54,7 +57,7 @@ export default function ExamList() {
   const fetchExamDetails = async (id) => {
     setLoadingDetails(true);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/exams/${id}/`, {
+      const res = await fetch(`${API_BASE_URL}/api/exams/${id}/`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -79,7 +82,7 @@ export default function ExamList() {
 
   const deleteExam = async (id) => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/exams/${id}/delete`, {
+      const res = await fetch(`${API_BASE_URL}/api/exams/${id}/delete`, {
         method: "DELETE",
         headers: {
           "Authorization": `Bearer ${localStorage.getItem("jwt")}`,
@@ -96,7 +99,7 @@ export default function ExamList() {
 
   const updateGrade = async (workId, note) => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/work/${workId}/grade/`, {
+      const res = await fetch(`${API_BASE_URL}/api/work/${workId}/grade/`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -151,7 +154,7 @@ export default function ExamList() {
         formData.append("content", examFile);
       }
       
-      const res = await fetch("http://127.0.0.1:8000/api/exams/create/", {
+      const res = await fetch(`${API_BASE_URL}/api/exams/create/`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${localStorage.getItem("jwt")}`,

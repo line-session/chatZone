@@ -19,7 +19,7 @@ export default function Home() {
         
         <div className="flex flex-col space-y-4">
           <button
-            onClick={() => router.push("/teacher/login")}
+            onClick={() => router.push("/teacher/login/")}
             className="flex items-center justify-center space-x-3 px-6 py-4 bg-blue-600 text-white font-semibold text-lg rounded-lg shadow-md hover:bg-blue-700 transition duration-300 transform hover:scale-105"
           >
             <GraduationCap className="w-6 h-6" />
@@ -27,7 +27,7 @@ export default function Home() {
           </button>
 
           <button
-            onClick={() => router.push("/student/login")}
+            onClick={() => router.push("/student/login/")}
             className="flex items-center justify-center space-x-3 px-6 py-4 bg-green-600 text-white font-semibold text-lg rounded-lg shadow-md hover:bg-green-700 transition duration-300 transform hover:scale-105"
           >
             <User className="w-6 h-6" />

@@ -10,6 +10,22 @@ export default function Navbar() {
   const router = useRouter();
 
   useEffect(() => {
+    const token = localStorage.getItem("jwt");
+    const userRole = localStorage.getItem("role");
+  
+    if (!token) return; // Ne rien faire si non connecté
+  
+    // Vérifier si l'URL actuelle correspond au rôle de l'utilisateur
+    if (window.location.pathname.startsWith("/student") && userRole !== "student") {
+      router.push(`/${userRole}`);
+    }
+    if (window.location.pathname.startsWith("/teacher") && userRole !== "teacher") {
+      router.push(`/${userRole}`);
+    }
+  }, []);
+  
+
+  useEffect(() => {
     // Get JWT and Role from localStorage on mount
     const token = localStorage.getItem("jwt");
     const userRole = localStorage.getItem("role");
@@ -35,9 +51,16 @@ export default function Navbar() {
         </button>
         
         {/* Brand name */}
-        <h1 className="text-2xl font-extrabold text-blue-600 tracking-wide">
-          Grasp<span className="text-gray-900">Eval</span>
-        </h1>
+        <h1 
+  className={`text-2xl font-extrabold tracking-wide ${
+    jwt ? "text-gray-900 cursor-default" : "text-blue-600 cursor-pointer"
+  }`}
+  onClick={() => {
+    if (!jwt) router.push("/");
+  }}
+>
+  Grasp<span className="text-gray-900">Eval</span>
+</h1>
       </div>
 
       {/* Desktop Navigation */}
