@@ -7,6 +7,9 @@ import { motion } from "framer-motion";
 import { Loader2, Menu, X, PlusCircle, Trash } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useRouter } from "next/navigation";
+import Navbar from "@/components/ui/Navbar";
+
 
 export default function Chat() {
   const [message, setMessage] = useState("");
@@ -16,6 +19,7 @@ export default function Chat() {
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [selectedDiscussion, setSelectedDiscussion] = useState(null);
   const chatEndRef = useRef(null);
+  const router = useRouter();
 
   useEffect(() => {
     fetchChatHistory();
@@ -82,11 +86,20 @@ export default function Chat() {
           "Authorization": `Bearer ${localStorage.getItem("jwt")}`
         }
       });
+  
       if (!res.ok) throw new Error("Failed to create a new discussion.");
       
       const data = await res.json();
-      setChatHistory((prev) => [ { id: data.uuid, messages: [] }, ...prev ]); // Adding new discussion at the top
+      window.location.reload();
+  
+      setChatHistory((prev) => {
+        const updatedHistory = [{ id: data.uuid, messages: [] }, ...prev]; 
+        return updatedHistory;
+      });
+  
+      // Ensure the latest created discussion is selected
       setSelectedDiscussion(data.uuid);
+      
     } catch (err) {
       setError(err.message);
     }
@@ -123,41 +136,43 @@ export default function Chat() {
     }, 100);
   }, [chatHistory, selectedDiscussion]);
 
+  const handleLogout = () => {
+    localStorage.removeItem("jwt");
+    router.push("/login");
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gray-100 text-gray-900">
-      <header className="bg-white shadow-md py-4 px-6 flex justify-between items-center border-b">
-        <div className="flex items-center space-x-4">
-          <button onClick={() => setIsNavOpen(!isNavOpen)} className="md:hidden">
-            {isNavOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
-          <h1 className="text-xl font-bold">Chat App</h1>
-        </div>
-      </header>
+      <Navbar /> {/* Insertion du composant Navbar ici */}
 
       <div className="flex flex-grow overflow-hidden">
-        <aside className={`w-1/4 bg-white p-4 shadow-md overflow-y-auto ${isNavOpen ? 'block' : 'hidden'} md:block`}>
-          <div className="flex items-center mb-3">
+        <aside className={`w-1/4 bg-white p-6 shadow-md overflow-y-auto ${isNavOpen ? 'block' : 'hidden'} md:block`}>
+          <div className="flex items-center mb-5">
             <button 
               onClick={createNewDiscussion} 
-              className="mr-3 text-green-600 flex items-center"
+              className="flex items-center space-x-3 px-4 py-2 rounded-full border-2 border-green-600 text-green-600 font-semibold text-lg transition-all hover:bg-green-600 hover:text-white hover:border-transparent active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              <PlusCircle className="justify-right 44w-6 h-6 mr-2" />
-              New Discussion
+              <PlusCircle className="w-6 h-6" />
+              <span>New Discussion</span>
             </button>
           </div>
-          <h2 className="text-lg font-bold mb-3">Discussions</h2>
-          <div className="space-y-2">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Discussions</h2>
+          <div className="space-y-4">
             {chatHistory.map((chat) => (
               <div
                 key={chat.id}
                 onClick={() => handleSelectDiscussion(chat.id)}
-                className={`p-3 rounded-lg cursor-pointer ${selectedDiscussion === chat.id ? "bg-blue-500 text-white" : "bg-gray-100"}`}
+                className={`p-4 cursor-pointer transition-all border-2 
+                  ${selectedDiscussion === chat.id ? 
+                    "border-blue-600 bg-blue-600 text-white" : 
+                    "border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-blue-300"
+                  }`}
               >
-                <div className="flex justify-between">
-                  <span>{chat.messages[0]?.question || "Untitled Discussion"}</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-medium">{chat.messages[0]?.question || "Nouvelle Discussion"}</span>
                   <button 
                     onClick={(e) => { e.stopPropagation(); deleteDiscussion(chat.id); }} 
-                    className="text-red-500"
+                    className="text-red-500 hover:text-red-700 transition-all"
                   >
                     <Trash className="w-5 h-5" />
                   </button>
