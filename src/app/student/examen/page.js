@@ -21,6 +21,8 @@ export default function StudentAssignments() {
   const [submitError, setSubmitError] = useState("");
   const [submitSuccess, setSubmitSuccess] = useState("");
   const router = useRouter();
+  const [downloading, setDownloading] = useState(false);
+  
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -28,6 +30,49 @@ export default function StudentAssignments() {
   useEffect(() => {
     fetchAssignments();
   }, []);
+
+  const handleDownload = async (url, filename) => {
+    setDownloading(true);
+    try {
+      const token = localStorage.getItem("jwt");
+      if (!token) {
+        throw new Error("Authentication token not found");
+      }
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+      }
+
+      // Get the blob from the response
+      const blob = await response.blob();
+      
+      // Create a URL for the blob
+      const downloadUrl = window.URL.createObjectURL(blob);
+      
+      // Create a temporary anchor element and trigger download
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename || 'download';
+      document.body.appendChild(link);
+      link.click();
+      
+      // Clean up
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Download error:", err);
+      alert("Failed to download the file. Please try again.");
+    }
+    setDownloading(false);
+  };
+
 
   const fetchAssignments = async () => {
     setLoading(true);
@@ -498,15 +543,22 @@ export default function StudentAssignments() {
                           
                           {selectedAssignment.content && (
                             <div className="mt-4">
-                              <a 
-                                href={selectedAssignment.content} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="flex items-center p-3 bg-gray-50 rounded-md shadow-sm hover:shadow-md transition-shadow"
+                              <Button 
+                                variant="link"
+                                className="text-blue-600 hover:text-blue-800 p-0 h-auto font-medium flex items-center"
+                                onClick={() => handleDownload(
+                                  `${API_BASE_URL}/api/download/exams/${selectedAssignment.exam_uuid}`,
+                                  `${selectedAssignment.title.replace(/\s+/g, '_')}_exam.pdf`
+                                )}
+                                disabled={downloading}
                               >
-                                <FileText className="w-5 h-5 text-gray-500 mr-2" />
-                                <span className="text-blue-600">View Exam Content</span>
-                              </a>
+                                {downloading ? (
+                                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                ) : (
+                                  <FileText className="w-4 h-4 mr-1" />
+                                )}
+                                {downloading ? "Downloading..." : "Download Document"}
+                              </Button>
                             </div>
                           )}
                         </div>

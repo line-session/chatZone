@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Loader2, Trash, X, FileText, User, Clock, MessageSquare, Star, Edit, Check, Upload } from "lucide-react";
+import { PlusCircle, Loader2, Trash, X, FileText, User, Clock, MessageSquare, Star, Edit, Check, Upload, Download } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/ui/Navbar";
 
@@ -26,6 +26,7 @@ export default function ExamList() {
   });
   const [examFile, setExamFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const fileInputRef = useRef(null);
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -95,6 +96,49 @@ export default function ExamList() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  // Function to handle secure downloads with JWT token
+  const handleDownload = async (url, filename) => {
+    setDownloading(true);
+    try {
+      const token = localStorage.getItem("jwt");
+      if (!token) {
+        throw new Error("Authentication token not found");
+      }
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+      }
+
+      // Get the blob from the response
+      const blob = await response.blob();
+      
+      // Create a URL for the blob
+      const downloadUrl = window.URL.createObjectURL(blob);
+      
+      // Create a temporary anchor element and trigger download
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename || 'download';
+      document.body.appendChild(link);
+      link.click();
+      
+      // Clean up
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Download error:", err);
+      alert("Failed to download the file. Please try again.");
+    }
+    setDownloading(false);
   };
 
   const updateGrade = async (workId, note) => {
@@ -448,15 +492,22 @@ export default function ExamList() {
                             <FileText className="w-5 h-5 text-gray-500 mr-2" />
                             <div>
                               <p className="text-sm font-medium text-gray-500">Exam Content</p>
-                              <a 
-                                href={selectedExam.content} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-blue-600 hover:text-blue-800 font-medium flex items-center"
+                              <Button 
+                                variant="link"
+                                className="text-blue-600 hover:text-blue-800 p-0 h-auto font-medium flex items-center"
+                                onClick={() => handleDownload(
+                                  `${API_BASE_URL}/api/download/exams/${selectedExam.exam_uuid}`,
+                                  `${selectedExam.title.replace(/\s+/g, '_')}_exam.pdf`
+                                )}
+                                disabled={downloading}
                               >
-                                <FileText className="w-4 h-4 mr-1" />
-                                View Document
-                              </a>
+                                {downloading ? (
+                                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                ) : (
+                                  <FileText className="w-4 h-4 mr-1" />
+                                )}
+                                {downloading ? "Downloading..." : "Download Document"}
+                              </Button>
                             </div>
                           </div>
                         )}
@@ -541,15 +592,21 @@ export default function ExamList() {
                               </div>
                               
                               <div className="mt-4">
-                                <a 
-                                  href={work.content} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer" 
+                                <Button 
+                                  onClick={() => handleDownload(
+                                    `${API_BASE_URL}/api/download/work/${work.id}`,
+                                    `${work.student_name.replace(/\s+/g, '_')}_submission.pdf`
+                                  )}
+                                  disabled={downloading}
                                   className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
                                 >
-                                  <FileText className="w-4 h-4 mr-2" />
-                                  View Submission
-                                </a>
+                                  {downloading ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <Download className="w-4 h-4 mr-2" />
+                                  )}
+                                  {downloading ? "Downloading..." : "Download Submission"}
+                                </Button>
                               </div>
                             </div>
                           ))}
