@@ -12,25 +12,22 @@ export default function Navbar() {
   useEffect(() => {
     const token = localStorage.getItem("jwt");
     const userRole = localStorage.getItem("role");
-  
-    if (!token) return; // Ne rien faire si non connecté
-  
-    // Vérifier si l'URL actuelle correspond au rôle de l'utilisateur
-    if (window.location.pathname.startsWith("/student") && userRole !== "student") {
-      router.push(`/${userRole}`);
-    }
-    if (window.location.pathname.startsWith("/teacher") && userRole !== "teacher") {
-      router.push(`/${userRole}`);
-    }
-  }, []);
-  
 
-  useEffect(() => {
-    // Get JWT and Role from localStorage on mount
-    const token = localStorage.getItem("jwt");
-    const userRole = localStorage.getItem("role");
-    setJwt(token);
-    setRole(userRole);
+    if (token) {
+      setJwt(token);
+      setRole(userRole);
+
+      // Redirect user if they try to access the wrong section
+      if (window.location.pathname.startsWith("/student") && userRole !== "student") {
+        router.push(`/${userRole}`);
+      }
+      if (window.location.pathname.startsWith("/teacher") && userRole !== "teacher") {
+        router.push(`/${userRole}`);
+      }
+      if (window.location.pathname.startsWith(`/${userRole}/login` || `/${userRole}/register`)) {
+        router.push(`/${userRole}`);
+      }
+    }
   }, []);
 
   const handleLogout = () => {
@@ -49,18 +46,18 @@ export default function Navbar() {
         <button onClick={() => setIsNavOpen(!isNavOpen)} className="md:hidden">
           {isNavOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
-        
+
         {/* Brand name */}
-        <h1 
-  className={`text-2xl font-extrabold tracking-wide ${
-    jwt ? "text-gray-900 cursor-default" : "text-blue-600 cursor-pointer"
-  }`}
-  onClick={() => {
-    if (!jwt) router.push("/");
-  }}
->
-  Grasp<span className="text-gray-900">Eval</span>
-</h1>
+        <h1
+          className={`text-2xl font-extrabold tracking-wide ${
+            jwt ? "text-gray-900 cursor-default" : "text-blue-600 cursor-pointer"
+          }`}
+          onClick={() => {
+            if (!jwt) router.push("/");
+          }}
+        >
+          Grasp<span className="text-gray-900">Eval</span>
+        </h1>
       </div>
 
       {/* Desktop Navigation */}
@@ -87,27 +84,37 @@ export default function Navbar() {
           <a href="/login" className="text-gray-700 hover:text-black text-lg font-medium">
             
           </a>
+          <a href="/register" className="text-gray-700 hover:text-black text-lg font-medium">
+            
+          </a>
         </nav>
       )}
 
       {/* Mobile Menu */}
-      {isNavOpen && jwt && role && (
+      {isNavOpen && (
         <nav className="absolute top-16 left-0 w-full bg-white shadow-md p-5 flex flex-col space-y-4 md:hidden">
-          <a href={`/${role}`} className="text-gray-700 hover:text-black text-lg font-medium">
-            Dashboard
-          </a>
-          <a href={`/${role}/examen/`} className="text-gray-700 hover:text-black text-lg font-medium">
-            Examen
-          </a>
-          <a href={`/${role}/chat/`} className="text-gray-700 hover:text-black text-lg font-medium">
-            Chat
-          </a>
-          <button
-            onClick={handleLogout}
-            className="text-red-600 hover:text-red-800 text-lg font-medium"
-          >
-            Logout
-          </button>
+          {jwt && role ? (
+            <>
+              <a href={`/${role}`} className="text-gray-700 hover:text-black text-lg font-medium">
+                Dashboard
+              </a>
+              <a href={`/${role}/examen/`} className="text-gray-700 hover:text-black text-lg font-medium">
+                Examen
+              </a>
+              <a href={`/${role}/chat/`} className="text-gray-700 hover:text-black text-lg font-medium">
+                Chat
+              </a>
+              <button
+                onClick={handleLogout}
+                className="text-red-600 hover:text-red-800 text-lg font-medium"
+              >
+                Logout
+              </button>
+            </>
+          ) : (
+            <>
+            </>
+          )}
         </nav>
       )}
     </header>

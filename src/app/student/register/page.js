@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/ui/Navbar";
 import { Loader2 } from "lucide-react";
+import Link from "next/link";
 
 export default function RegisterPage() {
   const [firstName, setFirstName] = useState("");
@@ -10,7 +11,6 @@ export default function RegisterPage() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("teacher");
   const [studentClass, setStudentClass] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,9 +18,13 @@ export default function RegisterPage() {
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
-
   const handleRegister = async () => {
     setError("");
+    if (!firstName || !lastName || !username || !email || !password || !studentClass) {
+      setError("Veuillez remplir tous les champs.");
+      return;
+    }
+
     setLoading(true);
     
     try {
@@ -33,8 +37,8 @@ export default function RegisterPage() {
           username,
           email,
           password,
-          role,
-          student_class: role === "student" ? studentClass : null,
+          role: "student", // Hardcoded since this is for students
+          student_class: studentClass,
         }),
       });
 
@@ -43,8 +47,8 @@ export default function RegisterPage() {
 
       if (response.ok) {
         localStorage.setItem("jwt", data.access_token);
-        localStorage.setItem("role", data.role);
-        router.push(data.role === "student" ? "/student/" : "/teacher/");
+        localStorage.setItem("role", "student");
+        router.push("/student/");
       } else {
         setError(data.error || "Échec de l'inscription");
       }
@@ -119,29 +123,14 @@ export default function RegisterPage() {
               required
             />
 
-            <div className="flex justify-center space-x-4">
-
-              <label className="flex items-center text-white">
-                <input
-                  type="radio"
-                  value="student"
-                  checked={role === "student"}
-                  onChange={() => setRole("student")}
-                  className="mr-2"
-                />
-                Étudiant
-              </label>
-            </div>
-
-            {role === "student" && (
-              <input
-                type="text"
-                placeholder="Classe"
-                value={studentClass}
-                onChange={(e) => setStudentClass(e.target.value)}
-                className="w-full px-4 py-3 bg-white/60 text-gray-800 border-none rounded-lg focus:ring-2 focus:ring-blue-400 focus:outline-none placeholder-gray-500"
-              />
-            )}
+            <input
+              type="text"
+              placeholder="Classe"
+              value={studentClass}
+              onChange={(e) => setStudentClass(e.target.value)}
+              className="w-full px-4 py-3 bg-white/60 text-gray-800 border-none rounded-lg focus:ring-2 focus:ring-blue-400 focus:outline-none placeholder-gray-500"
+              required
+            />
 
             <button
               onClick={handleRegister}
@@ -153,9 +142,9 @@ export default function RegisterPage() {
 
             <p className="text-white text-sm mt-4">
               Vous avez déjà un compte?{" "}
-              <a href="/student/login" className="text-blue-200 hover:text-white">
+              <Link href="/student/login" className="text-blue-200 hover:text-white">
                 Connectez-vous
-              </a>
+              </Link>
             </p>
           </div>
         </div>

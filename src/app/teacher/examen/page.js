@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Loader2, Trash, X, FileText, User, Clock, MessageSquare, Star, Edit, Check, Upload, Download } from "lucide-react";
+import { PlusCircle, Loader2, Trash, X, FileText, User, Clock, MessageSquare, Star, Edit, Check, Upload, Download, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/ui/Navbar";
 
@@ -27,6 +27,16 @@ export default function ExamList() {
   const [examFile, setExamFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [updatingGrade, setUpdatingGrade] = useState(null);
+  const [loadingAiSuggestion, setLoadingAiSuggestion] = useState(null);
+  
+  // New state for the AI suggestion popup
+  const [aiSuggestion, setAiSuggestion] = useState({
+    show: false,
+    content: "",
+    workId: null
+  });
+  
   const fileInputRef = useRef(null);
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -98,6 +108,66 @@ export default function ExamList() {
     }
   };
 
+  // Function to fetch AI grade suggestion with popup
+  const fetchAiGradeSuggestion = async (workId) => {
+    setLoadingAiSuggestion(workId);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/generate/${workId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("jwt")}`,
+        },
+      });
+      
+      if (!res.ok) throw new Error("Failed to get AI suggestion.");
+      
+      const data = await res.json();
+      
+      // Extract the grade from the generated correction
+      // This is a simple regex to find patterns like "X/Y" in the text
+      const gradeRegex = /\b(\d+)\/(\d+)\b/;
+      const gradeMatch = data.generated_correction.match(gradeRegex);
+      
+      if (gradeMatch) {
+        // If we found a grade like "8/10", use it
+        setGradeValue(gradeMatch[0]);
+      } else {
+        // Otherwise, look for other number patterns that might be grades
+        const numberRegex = /\b(\d+)\b/;
+        const numberMatch = data.generated_correction.match(numberRegex);
+        if (numberMatch) {
+          setGradeValue(numberMatch[0]);
+        } else {
+          // If no numbers found, just start with empty grade
+          setGradeValue("");
+        }
+      }
+      
+      // Start editing the grade with the AI suggestion
+      setEditingGrade(workId);
+      
+      // Show the popup with the AI suggestion
+      setAiSuggestion({
+        show: true,
+        content: data.generated_correction,
+        workId: workId
+      });
+      
+    } catch (err) {
+      console.error("AI suggestion error:", err);
+      // Show error in popup instead of alert
+      setAiSuggestion({
+        show: true,
+        content: "Failed to get AI grade suggestion. Please try again.",
+        workId: workId,
+        isError: true
+      });
+    } finally {
+      setLoadingAiSuggestion(null);
+    }
+  };
+
   // Function to handle secure downloads with JWT token
   const handleDownload = async (url, filename) => {
     setDownloading(true);
@@ -136,12 +206,17 @@ export default function ExamList() {
       document.body.removeChild(link);
     } catch (err) {
       console.error("Download error:", err);
-      alert("Failed to download the file. Please try again.");
+      setAiSuggestion({
+        show: true,
+        content: "Failed to download the file. Please try again.",
+        isError: true
+      });
     }
     setDownloading(false);
   };
 
   const updateGrade = async (workId, note) => {
+    setUpdatingGrade(workId); // Set updating state for this specific work
     try {
       const res = await fetch(`${API_BASE_URL}/api/work/${workId}/grade/`, {
         method: "PATCH",
@@ -162,7 +237,13 @@ export default function ExamList() {
       setEditingGrade(null);
     } catch (err) {
       console.error(err);
-      alert("Failed to update grade. Please try again.");
+      setAiSuggestion({
+        show: true,
+        content: "Failed to update grade. Please try again.",
+        isError: true
+      });
+    } finally {
+      setUpdatingGrade(null); // Clear updating state regardless of outcome
     }
   };
 
@@ -177,12 +258,38 @@ export default function ExamList() {
 
   const handleFileChange = (e) => {
     if (e.target.files.length > 0) {
-      setExamFile(e.target.files[0]);
+      const file = e.target.files[0];
+      const fileType = file.type;
+      const fileExtension = getFileExtension(file.name);
+      
+      // Check if file is PDF
+      if (fileType === 'application/pdf' || fileExtension === 'pdf') {
+        setExamFile(file);
+      } else {
+        // Clear the input and file state
+        e.target.value = null;
+        setExamFile(null);
+        
+        // Show error message
+        setAiSuggestion({
+          show: true,
+          content: "Only PDF files are allowed. Please select a PDF document.",
+          isError: true
+        });
+      }
     }
   };
 
   const createNewExam = async (e) => {
     e.preventDefault();
+    if (examFile && (examFile.type !== 'application/pdf' && getFileExtension(examFile.name) !== 'pdf')) {
+      setAiSuggestion({
+        show: true,
+        content: "Only PDF files are allowed. Please select a PDF document.",
+        isError: true
+      });
+      return;
+    }
     setSubmitting(true);
     
     try {
@@ -222,7 +329,11 @@ export default function ExamList() {
       setShowNewExamForm(false);
     } catch (err) {
       console.error(err);
-      alert("Failed to create exam. Please try again.");
+      setAiSuggestion({
+        show: true,
+        content: "Failed to create exam. Please try again.",
+        isError: true
+      });
     }
     
     setSubmitting(false);
@@ -244,9 +355,100 @@ export default function ExamList() {
     return date.toISOString().slice(0, 16);
   };
 
+  // Function to get the file extension from the filename
+  const getFileExtension = (filename) => {
+    if (!filename) return "";
+    return filename.split('.').pop().toLowerCase();
+  };
+
+  // Function to get file icon based on extension
+  const getFileIcon = (filename) => {
+    const ext = getFileExtension(filename);
+    // You could add more icons for different file types
+    switch (ext) {
+      case 'pdf':
+        return <FileText className="w-4 h-4" />;
+      case 'doc':
+      case 'docx':
+        return <FileText className="w-4 h-4 text-blue-500" />;
+      case 'xls':
+      case 'xlsx':
+        return <FileText className="w-4 h-4 text-green-500" />;
+      case 'ppt':
+      case 'pptx':
+        return <FileText className="w-4 h-4 text-red-500" />;
+      default:
+        return <FileText className="w-4 h-4" />;
+    }
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       <Navbar />
+      
+      {/* AI Suggestion Popup */}
+      {aiSuggestion.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+            <div className={`p-4 flex justify-between items-center ${aiSuggestion.isError ? "bg-red-500" : "bg-blue-600"} text-white rounded-t-lg`}>
+              <h3 className="text-lg font-medium flex items-center">
+                {aiSuggestion.isError ? (
+                  "Error"
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5 mr-2" />
+                    AI Suggested Correction
+                  </>
+                )}
+              </h3>
+              <button 
+                onClick={() => setAiSuggestion({...aiSuggestion, show: false})}
+                className="text-white hover:text-gray-200 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-grow">
+              {/* Format the AI suggestion with Markdown-like styling */}
+              {aiSuggestion.content.split('\n\n').map((paragraph, index) => {
+                // Check if paragraph is a header (starts with **)
+                if (paragraph.startsWith('**') && paragraph.endsWith('**')) {
+                  return <h4 key={index} className="font-bold my-2">{paragraph.replace(/\*\*/g, '')}</h4>
+                } 
+                // Check if paragraph starts with *
+                else if (paragraph.startsWith('* ')) {
+                  return <ul key={index} className="list-disc pl-6 my-3"><li>{paragraph.substring(2)}</li></ul>
+                }
+                // Regular paragraph
+                else {
+                  return <p key={index} className="my-2">{paragraph}</p>
+                }
+              })}
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end">
+              {!aiSuggestion.isError && aiSuggestion.workId && (
+                <Button 
+                  className="mr-2 bg-blue-600 hover:bg-blue-700"
+                  onClick={() => {
+                    setAiSuggestion({...aiSuggestion, show: false});
+                    // The grade value is already set during the fetch process
+                    handleGradeSubmit(aiSuggestion.workId);
+                  }}
+                >
+                  Apply Suggested Grade
+                </Button>
+              )}
+              <Button 
+                variant="outline"
+                onClick={() => setAiSuggestion({...aiSuggestion, show: false})}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div className="container mx-auto p-6">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-gray-800">My Exams</h1>
@@ -272,18 +474,18 @@ export default function ExamList() {
             </div>
             
             <form onSubmit={createNewExam} className="space-y-4">
-              <div>
-                <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
-                  Title*
-                </label>
-                <Input
-                  id="title"
-                  value={newExam.title}
-                  onChange={(e) => setNewExam({...newExam, title: e.target.value})}
-                  placeholder="Enter exam title"
-                  required
-                />
-              </div>
+            <div>
+  <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
+    Title*
+  </label>
+  <Input
+      id="title"
+      value={newExam.title}
+      onChange={(e) => setNewExam({...newExam, title: e.target.value})}
+      placeholder="Enter exam title"
+      required
+  />
+</div>
               
               <div>
                 <label htmlFor="classroom" className="block text-sm font-medium text-gray-700 mb-1">
@@ -337,6 +539,11 @@ export default function ExamList() {
                     {examFile ? examFile.name : 'No file selected'}
                   </span>
                 </div>
+                {examFile && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    File type: {getFileExtension(examFile.name).toUpperCase()}
+                  </p>
+                )}
               </div>
               
               <div>
@@ -401,14 +608,7 @@ export default function ExamList() {
                   </div>
                 ) : exams.length === 0 ? (
                   <div className="p-6 text-center text-gray-500">
-                    <p className="mb-4">No exams available.</p>
-                    <Button 
-                      onClick={() => setShowNewExamForm(true)} 
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                      size="sm"
-                    >
-                      <PlusCircle className="w-4 h-4 mr-2" /> Create Your First Exam
-                    </Button>
+                    <p>No exams available.</p>
                   </div>
                 ) : (
                   <ul className="max-h-96 overflow-y-auto">
@@ -432,6 +632,7 @@ export default function ExamList() {
                             <Trash className="w-4 h-4" />
                           </button>
                         </div>
+                        <p className="text-xs text-gray-500 mt-1">Classroom: {exam.classroom}</p>
                       </li>
                     ))}
                   </ul>
@@ -497,7 +698,9 @@ export default function ExamList() {
                                 className="text-blue-600 hover:text-blue-800 p-0 h-auto font-medium flex items-center"
                                 onClick={() => handleDownload(
                                   `${API_BASE_URL}/api/download/exams/${selectedExam.exam_uuid}`,
-                                  `${selectedExam.title.replace(/\s+/g, '_')}_exam.pdf`
+                                  `${selectedExam.title.replace(/\s+/g, '_')}_exam.${
+                                    selectedExam.content_type ? selectedExam.content_type.split('/').pop() : 'pdf'
+                                  }`
                                 )}
                                 disabled={downloading}
                               >
@@ -554,14 +757,20 @@ export default function ExamList() {
                                           size="sm"
                                           className="h-8 w-8 p-0 mr-1"
                                           onClick={() => handleGradeSubmit(work.id)}
+                                          disabled={updatingGrade === work.id}
                                         >
-                                          <Check className="w-4 h-4" />
+                                          {updatingGrade === work.id ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                          ) : (
+                                            <Check className="w-4 h-4" />
+                                          )}
                                         </Button>
                                         <Button
                                           size="sm"
                                           variant="ghost"
                                           className="h-8 w-8 p-0"
                                           onClick={() => setEditingGrade(null)}
+                                          disabled={updatingGrade === work.id}
                                         >
                                           <X className="w-4 h-4" />
                                         </Button>
@@ -572,8 +781,13 @@ export default function ExamList() {
                                         <button
                                           onClick={() => handleGradeEditStart(work.id, work.note)}
                                           className="ml-2 text-gray-400 hover:text-blue-500 transition-colors"
+                                          disabled={updatingGrade === work.id}
                                         >
-                                          <Edit className="w-4 h-4" />
+                                          {updatingGrade === work.id ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                          ) : (
+                                            <Edit className="w-4 h-4" />
+                                          )}
                                         </button>
                                       </div>
                                     )}
@@ -591,7 +805,8 @@ export default function ExamList() {
                                 </div>
                               </div>
                               
-                              <div className="mt-4">
+                              <div className="mt-4 flex space-x-2">
+                                {/* Download submission button */}
                                 <Button 
                                   onClick={() => handleDownload(
                                     `${API_BASE_URL}/api/download/work/${work.id}`,
@@ -606,6 +821,20 @@ export default function ExamList() {
                                     <Download className="w-4 h-4 mr-2" />
                                   )}
                                   {downloading ? "Downloading..." : "Download Submission"}
+                                </Button>
+                                
+                                {/* AI Suggestion Button */}
+                                <Button 
+                                  onClick={() => fetchAiGradeSuggestion(work.id)}
+                                  disabled={loadingAiSuggestion === work.id}
+                                  className="inline-flex items-center px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-md hover:bg-purple-700 transition-colors"
+                                >
+                                  {loadingAiSuggestion === work.id ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <Sparkles className="w-4 h-4 mr-2" />
+                                  )}
+                                  {loadingAiSuggestion === work.id ? "Getting AI Suggestion..." : "AI Grade Suggestion"}
                                 </Button>
                               </div>
                             </div>

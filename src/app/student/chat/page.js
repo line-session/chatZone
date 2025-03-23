@@ -8,7 +8,9 @@ import {
   PlusCircle, 
   Trash, 
   Send,
-  MessageSquare 
+  MessageSquare,
+  Menu,
+  X
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -28,6 +30,7 @@ export default function Chat() {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [selectedDiscussionId, setSelectedDiscussionId] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const chatEndRef = useRef(null);
   const router = useRouter();
   const inputRef = useRef(null);
@@ -48,6 +51,13 @@ export default function Chat() {
   useEffect(() => {
     if (selectedDiscussionId && inputRef.current) {
       inputRef.current.focus();
+    }
+  }, [selectedDiscussionId]);
+
+  // Close sidebar on mobile when a discussion is selected
+  useEffect(() => {
+    if (selectedDiscussionId && window.innerWidth < 768) {
+      setSidebarOpen(false);
     }
   }, [selectedDiscussionId]);
 
@@ -98,6 +108,10 @@ export default function Chat() {
 
   const handleSelectDiscussion = (id) => {
     setSelectedDiscussionId(id);
+  };
+
+  const toggleSidebar = () => {
+    setSidebarOpen(prev => !prev);
   };
 
   const sendMessage = async () => {
@@ -387,7 +401,7 @@ export default function Chat() {
   // Render empty state when no discussion is selected
   const renderEmptyState = () => (
     <div className="h-full flex items-center justify-center">
-      <div className="text-center p-8 max-w-md">
+      <div className="text-center p-4 md:p-8 max-w-md">
         <h3 className="text-xl font-semibold mb-2">
           No discussion selected
         </h3>
@@ -407,7 +421,7 @@ export default function Chat() {
   // Render welcome message when discussion has no messages
   const renderWelcomeMessage = () => (
     <div className="h-full flex items-center justify-center">
-      <div className="text-center p-8 max-w-md mx-auto">
+      <div className="text-center p-4 md:p-8 max-w-md mx-auto">
         <div className="bg-blue-100 dark:bg-blue-900/30 p-4 rounded-full inline-flex mb-4">
           <MessageSquare className="h-8 w-8 text-blue-600 dark:text-blue-400" />
         </div>
@@ -445,7 +459,7 @@ export default function Chat() {
               <Avatar className="h-8 w-8 bg-blue-600 text-white">
                 <span className="text-xs"></span>
               </Avatar>
-              <div className="bg-white dark:bg-zinc-800 py-2 px-4 rounded-lg shadow-sm flex-1">
+              <div className="bg-white dark:bg-zinc-800 py-2 px-3 md:px-4 rounded-lg shadow-sm flex-1 break-words">
                 <div className="prose dark:prose-invert prose-sm max-w-none">
                   <ReactMarkdown 
                     remarkPlugins={[remarkGfm]}
@@ -467,7 +481,7 @@ export default function Chat() {
               <Avatar className="h-8 w-8 bg-purple-600 text-white">
                 <span className="text-xs"></span>
               </Avatar>
-              <div className="bg-white dark:bg-zinc-800 py-2 px-4 rounded-lg shadow-sm flex-1">
+              <div className="bg-white dark:bg-zinc-800 py-2 px-3 md:px-4 rounded-lg shadow-sm flex-1 break-words">
                 {msg.isOptimistic ? (
                   <div className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400">
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -496,9 +510,27 @@ export default function Chat() {
     <div className="flex flex-col h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-50">
       <Navbar />
 
-      <div className="flex flex-grow overflow-hidden">
+      <div className="flex flex-grow overflow-hidden relative">
+        {/* Mobile sidebar toggle button */}
+        <div className="md:hidden fixed bottom-4 left-4 z-20">
+          <Button
+            onClick={toggleSidebar}
+            className="h-12 w-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
+          >
+            {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </Button>
+        </div>
+
         {/* Sidebar */}
-        <aside className="w-80 bg-white dark:bg-zinc-800 border-r border-zinc-200 dark:border-zinc-700 overflow-y-auto transition-all">
+        <aside 
+          className={cn(
+            "absolute md:relative z-10 w-full md:w-80 bg-white dark:bg-zinc-800 border-r border-zinc-200 dark:border-zinc-700 overflow-y-auto transition-all duration-300 ease-in-out", 
+            sidebarOpen 
+              ? "left-0" 
+              : "-left-full md:left-0",
+            "h-full"
+          )}
+        >
           <div className="p-4">
             <Button
               onClick={createNewDiscussion}
@@ -516,7 +548,7 @@ export default function Chat() {
             </Button>
           </div>
           
-          <div className="px-3 pb-2">
+          <div className="px-3 pb-20 md:pb-2">
             <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 px-2 mb-2">
               Discussions
             </h2>
@@ -530,12 +562,12 @@ export default function Chat() {
           {selectedDiscussion ? (
             <>
               {/* Messages area */}
-              <div className="flex-1 overflow-y-auto p-4">
+              <div className="flex-1 overflow-y-auto p-2 md:p-4">
                 {renderMessages()}
               </div>
               
               {/* Input area */}
-              <div className="p-4 border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
+              <div className="p-2 md:p-4 border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
                 <div className="flex gap-2">
                   <Input
                     ref={inputRef}
@@ -544,7 +576,7 @@ export default function Chat() {
                     onChange={(e) => setMessage(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && !isLoading && sendMessage()}
                     placeholder="Type your message..."
-                    className="flex-grow py-6 text-base"
+                    className="flex-grow py-5 md:py-6 text-base"
                     disabled={isLoading}
                   />
                   <Button 
