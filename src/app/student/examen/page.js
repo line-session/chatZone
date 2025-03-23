@@ -160,6 +160,11 @@ export default function StudentAssignments() {
       setSubmitError("Please select a file to upload");
       return;
     }
+
+    if (fileInput.type !== 'application/pdf') {
+      setSubmitError("Only PDF files are allowed");
+      return;
+    }
     
     if (!selectedAssignment || !selectedAssignment.exam_uuid) {
       setSubmitError("Please select a valid assignment");
@@ -671,6 +676,7 @@ export default function StudentAssignments() {
                                   <input
                                     type="file"
                                     className="hidden"
+                                    accept=".pdf"
                                     onChange={(e) => setFileInput(e.target.files[0])}
                                     required
                                   />
