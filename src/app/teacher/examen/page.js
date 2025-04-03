@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Loader2, Trash, X, FileText, User, Clock, MessageSquare, Star, Edit, Check, Upload, Download, Sparkles } from "lucide-react";
+import { PlusCircle, Loader2, Trash, X, FileText, User, Clock, MessageSquare, Star, Edit, Check, Upload, Download, Sparkles, Shield } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/ui/Navbar";
 
@@ -29,8 +29,10 @@ export default function ExamList() {
   const [downloading, setDownloading] = useState(false);
   const [updatingGrade, setUpdatingGrade] = useState(null);
   const [loadingAiSuggestion, setLoadingAiSuggestion] = useState(null);
+  // New state for plagiarism detection
+  const [checkingPlagiarism, setCheckingPlagiarism] = useState(false);
   
-  // New state for the AI suggestion popup
+  // State for the AI suggestion popup
   const [aiSuggestion, setAiSuggestion] = useState({
     show: false,
     content: "",
@@ -105,6 +107,66 @@ export default function ExamList() {
       setStudentWorks([]);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // New function to check for plagiarism
+  const checkPlagiarism = async () => {
+    if (!selectedExam || !selectedExam.exam_uuid) return;
+    
+    setCheckingPlagiarism(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/plagiat/${selectedExam.exam_uuid}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("jwt")}`,
+        },
+      });
+      
+      if (!res.ok) throw new Error("Failed to run plagiarism check.");
+      
+      const data = await res.json();
+      
+      // Format the plagiarism report for better readability
+      let formattedContent = "";
+      
+      if (data.plagiarism_report) {
+        formattedContent = data.plagiarism_report;
+      }
+      
+      // Add information about missing files if any
+      if (data.missing_files && data.missing_files.length > 0) {
+        formattedContent += "\n\n**Missing Files:**\n\n";
+        formattedContent += "The following students' submissions could not be analyzed:\n";
+        data.missing_files.forEach(student => {
+          formattedContent += `* ${student}\n`;
+        });
+        formattedContent += "\nThese files may be corrupted, in an unsupported format, or unavailable.";
+      }
+      
+      // Show the results in the popup
+      setAiSuggestion({
+        show: true,
+        content: formattedContent,
+        title: "Plagiarism Detection Results",
+        isPlagiarismResult: true
+      });
+      
+      // If the response includes updated student works, update them
+      if (data.student_works) {
+        setStudentWorks(data.student_works);
+      }
+      
+    } catch (err) {
+      console.error("Plagiarism check error:", err);
+      setAiSuggestion({
+        show: true,
+        content: "Failed to run plagiarism detection. Please try again later.",
+        isError: true
+      });
+    } finally {
+      setCheckingPlagiarism(false);
     }
   };
 
@@ -388,66 +450,88 @@ export default function ExamList() {
       
       {/* AI Suggestion Popup */}
       {aiSuggestion.show && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
-            <div className={`p-4 flex justify-between items-center ${aiSuggestion.isError ? "bg-red-500" : "bg-blue-600"} text-white rounded-t-lg`}>
-              <h3 className="text-lg font-medium flex items-center">
-                {aiSuggestion.isError ? (
-                  "Error"
-                ) : (
-                  <>
-                    <Sparkles className="w-5 h-5 mr-2" />
-                    AI Suggested Correction
-                  </>
-                )}
-              </h3>
-              <button 
-                onClick={() => setAiSuggestion({...aiSuggestion, show: false})}
-                className="text-white hover:text-gray-200 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto flex-grow">
-              {/* Format the AI suggestion with Markdown-like styling */}
-              {aiSuggestion.content.split('\n\n').map((paragraph, index) => {
-                // Check if paragraph is a header (starts with **)
-                if (paragraph.startsWith('**') && paragraph.endsWith('**')) {
-                  return <h4 key={index} className="font-bold my-2">{paragraph.replace(/\*\*/g, '')}</h4>
-                } 
-                // Check if paragraph starts with *
-                else if (paragraph.startsWith('* ')) {
-                  return <ul key={index} className="list-disc pl-6 my-3"><li>{paragraph.substring(2)}</li></ul>
-                }
-                // Regular paragraph
-                else {
-                  return <p key={index} className="my-2">{paragraph}</p>
-                }
-              })}
-            </div>
-            <div className="p-4 border-t border-gray-200 flex justify-end">
-              {!aiSuggestion.isError && aiSuggestion.workId && (
-                <Button 
-                  className="mr-2 bg-blue-600 hover:bg-blue-700"
-                  onClick={() => {
-                    setAiSuggestion({...aiSuggestion, show: false});
-                    // The grade value is already set during the fetch process
-                    handleGradeSubmit(aiSuggestion.workId);
-                  }}
-                >
-                  Apply Suggested Grade
-                </Button>
-              )}
-              <Button 
-                variant="outline"
-                onClick={() => setAiSuggestion({...aiSuggestion, show: false})}
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+      <div className={`p-4 flex justify-between items-center ${
+        aiSuggestion.isError ? "bg-red-500" : 
+        aiSuggestion.isPlagiarismResult ? "bg-amber-600" : 
+        "bg-blue-600"
+      } text-white rounded-t-lg`}>
+        <h3 className="text-lg font-medium flex items-center">
+          {aiSuggestion.isError ? (
+            "Error"
+          ) : aiSuggestion.isPlagiarismResult ? (
+            <>
+              <Shield className="w-5 h-5 mr-2" />
+              Plagiarism Detection Results
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-5 h-5 mr-2" />
+              AI Suggested Correction
+            </>
+          )}
+        </h3>
+        <button 
+          onClick={() => setAiSuggestion({...aiSuggestion, show: false})}
+          className="text-white hover:text-gray-200 transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      <div className="p-6 overflow-y-auto flex-grow">
+        {/* Format the content with better Markdown styling */}
+        {aiSuggestion.content.split('\n\n').map((paragraph, index) => {
+          // Check if paragraph is a header (starts with **)
+          if (paragraph.startsWith('**') && paragraph.endsWith('**')) {
+            return <h4 key={index} className="font-bold text-lg my-3 text-gray-800">{paragraph.replace(/\*\*/g, '')}</h4>
+          } 
+          // Check if paragraph contains bullet points
+          else if (paragraph.includes('\n* ')) {
+            return (
+              <div key={index} className="my-3">
+                {paragraph.split('\n* ').map((item, i) => {
+                  if (i === 0) {
+                    return item ? <p key={`${index}-intro`} className="mb-2">{item}</p> : null;
+                  }
+                  return <ul key={`${index}-${i}`} className="list-disc pl-6 my-1"><li>{item}</li></ul>
+                })}
+              </div>
+            );
+          }
+          // Check if paragraph starts with bullet
+          else if (paragraph.startsWith('* ')) {
+            return <ul key={index} className="list-disc pl-6 my-3"><li>{paragraph.substring(2)}</li></ul>
+          }
+          // Regular paragraph
+          else {
+            return <p key={index} className="my-2">{paragraph}</p>
+          }
+        })}
+      </div>
+      <div className="p-4 border-t border-gray-200 flex justify-end">
+        {!aiSuggestion.isError && !aiSuggestion.isPlagiarismResult && aiSuggestion.workId && (
+          <Button 
+            className="mr-2 bg-blue-600 hover:bg-blue-700"
+            onClick={() => {
+              setAiSuggestion({...aiSuggestion, show: false});
+              // The grade value is already set during the fetch process
+              handleGradeSubmit(aiSuggestion.workId);
+            }}
+          >
+            Apply Suggested Grade
+          </Button>
+        )}
+        <Button 
+          variant="outline"
+          onClick={() => setAiSuggestion({...aiSuggestion, show: false})}
+        >
+          Close
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
       
       <div className="container mx-auto p-6">
         <div className="flex justify-between items-center mb-6">
@@ -655,12 +739,34 @@ export default function ExamList() {
                     <div className="p-6 border-b border-gray-200">
                       <div className="flex justify-between items-start">
                         <h2 className="text-2xl font-bold text-gray-800">{selectedExam.title}</h2>
-                        <button
-                          onClick={() => setSelectedExam(null)}
-                          className="text-gray-400 hover:text-gray-600 transition-colors"
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
+                        <div className="flex items-center">
+                          {/* Plagiarism Detection Button - NEW */}
+                          <Button
+                            onClick={checkPlagiarism}
+                            disabled={checkingPlagiarism || studentWorks.length < 2}
+                            className="bg-red-600 hover:bg-red-700 text-white mr-3 flex items-center"
+                            title={studentWorks.length < 2 ? "Need at least 2 submissions to check plagiarism" : ""}
+                          >
+                            {checkingPlagiarism ? (
+                              <>
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                Checking...
+                              </>
+                            ) : (
+                              <>
+                                <Shield className="w-4 h-4 mr-2" />
+                                Detect Plagiarism
+                              </>
+                            )}
+                          </Button>
+                          
+                          <button
+                            onClick={() => setSelectedExam(null)}
+                            className="text-gray-400 hover:text-gray-600 transition-colors"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        </div>
                       </div>
                       
                       <div className="mt-4 space-y-3">
