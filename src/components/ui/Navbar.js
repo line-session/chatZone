@@ -66,6 +66,9 @@ export default function Navbar() {
           <a href={`/${role}`} className="text-gray-700 hover:text-black text-lg font-medium">
             Dashboard
           </a>
+          <a href={`/${role}/discussion/`} className="text-gray-700 hover:text-black text-lg font-medium">
+            Discussion
+          </a>
           <a href={`/${role}/examen/`} className="text-gray-700 hover:text-black text-lg font-medium">
             Examen
           </a>
