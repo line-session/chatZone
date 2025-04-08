@@ -31,6 +31,7 @@ export default function LoginPage() {
       if (response.ok) {
         localStorage.setItem("jwt", data.access_token);
         localStorage.setItem("role", data.role);
+        localStorage.setItem("user", data.username);
         router.push(data.role === "student" ? "/student" : "/teacher");
       } else {
         setError(data.error || "Login failed");

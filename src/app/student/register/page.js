@@ -48,6 +48,7 @@ export default function RegisterPage() {
       if (response.ok) {
         localStorage.setItem("jwt", data.access_token);
         localStorage.setItem("role", "student");
+        localStorage.setItem("user", data.username);
         router.push("/student/");
       } else {
         setError(data.error || "Échec de l'inscription");
