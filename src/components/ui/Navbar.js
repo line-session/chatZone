@@ -73,7 +73,7 @@ export default function Navbar() {
             Examen
           </a>
           <a href={`/${role}/chat/`} className="text-gray-700 hover:text-black text-lg font-medium">
-            Chat
+            Chat IA
           </a>
           <button
             onClick={handleLogout}

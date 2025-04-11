@@ -9,7 +9,8 @@ import {
   Trash, 
   Send,
   MessageSquare,
-  Users
+  RefreshCw,
+  User
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -18,7 +19,6 @@ import Navbar from "@/components/ui/Navbar";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Avatar } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -37,12 +37,16 @@ export default function ChatRoom() {
   const router = useRouter();
   const [roomName, setRoomName] = useState("");
   const inputRef = useRef(null);
+  const [currentUser, setCurrentUser] = useState("");
+  const [refreshingChatrooms, setRefreshingChatrooms] = useState(false);
+  const [formErrors, setFormErrors] = useState({ roomName: "", participants: "" });
 
   // Get the selected chatroom object
   const selectedChatroom = chatrooms.find(room => room.id === selectedChatroomId);
 
   useEffect(() => {
     fetchChatrooms();
+    setCurrentUser(localStorage.getItem("user") || "");
   }, []);
 
   // Auto-scroll to bottom when messages change
@@ -94,27 +98,29 @@ export default function ChatRoom() {
     };
     
     ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+      const data = JSON.parse(event.data);
+      
+      // Transform the message to match our expected format
+      if (data.message) {
+        const newMessage = {
+          id: data.id || `temp-${Date.now()}`,
+          sender: data.sender,
+          message: data.message,
+          created_at: data.date || new Date().toISOString()
+        };
         
-        // Transform the message to match our expected format
-        if (data.message) {
-          const transformedMessage = {
-            sender: data.sender,
-            message: data.message,
-            created_at: data.timestamp || new Date().toISOString() // Fall back to current time if no timestamp
-          };
-          
-          // Add the new message to the chat
-          setMessages(prev => {
-            const exists = prev.some(m => 
-              m.message === transformedMessage.message && 
-              m.sender === transformedMessage.sender
-            );
-            return exists ? prev : [...prev, transformedMessage];
-          });
-          scrollToBottom();
-        }
-      };
+        // Check if message already exists to prevent duplicates
+        setMessages(prev => {
+          const exists = prev.some(m => 
+            m.id === newMessage.id || 
+            (m.message === newMessage.message && m.sender === newMessage.sender)
+          );
+          return exists ? prev : [...prev, newMessage];
+        });
+        
+        scrollToBottom();
+      }
+    };
     
     ws.onerror = (error) => {
       console.error("WebSocket error:", error);
@@ -131,6 +137,7 @@ export default function ChatRoom() {
   const fetchChatrooms = async () => {
     try {
       setIsInitialLoading(true);
+      setRefreshingChatrooms(true);
       
       const response = await fetch(`${API_BASE_URL}/api/chatroom/list/`, {
         method: "GET",
@@ -153,15 +160,25 @@ export default function ChatRoom() {
       
       setChatrooms(sortedChatrooms);
       
-      // Select the first chatroom by default if none is selected
-      if (sortedChatrooms.length > 0 && !selectedChatroomId) {
-        setSelectedChatroomId(sortedChatrooms[0].id);
-      }
+      // Don't auto-select a chatroom
     } catch (error) {
       toast.error("Failed to load chat rooms");
       console.error(error);
     } finally {
       setIsInitialLoading(false);
+      setRefreshingChatrooms(false);
+    }
+  };
+
+  const refreshChatrooms = async () => {
+    try {
+      setRefreshingChatrooms(true);
+      await fetchChatrooms();
+      toast.success("Chat rooms refreshed");
+    } catch (error) {
+      toast.error("Failed to refresh chat rooms");
+    } finally {
+      setRefreshingChatrooms(false);
     }
   };
 
@@ -183,12 +200,12 @@ export default function ChatRoom() {
       
       const data = await response.json();
       
-      // Transform messages to match our component's expected format
+      // Transform and standardize message format
       const transformedMessages = data.messages.map(msg => ({
         id: msg.id,
-        sender: msg.sender,
-        message: msg.content,
-        created_at: msg.timestamp
+        sender: msg.sender.username, // Keep this as is, will be handled by isMessageFromCurrentUser
+        message: msg.message,
+        created_at: msg.created_at
       }));
       
       // Sort messages by creation date (oldest first)
@@ -210,7 +227,12 @@ export default function ChatRoom() {
     setSelectedChatroomId(id);
   };
 
-  const sendMessage = async () => {
+  const sendMessage = async (e) => {
+    // Allow sending with Enter key or button click
+    if (e && e.type === "keydown" && e.key !== "Enter") {
+      return;
+    }
+    
     const trimmedMessage = message.trim();
     
     if (!trimmedMessage) {
@@ -246,13 +268,25 @@ export default function ChatRoom() {
   };
 
   const createNewChatroom = async () => {
+    // Reset form errors first
+    setFormErrors({ roomName: "", participants: "" });
+    
+    // Client-side validation
+    let hasError = false;
+    const newErrors = { roomName: "", participants: "" };
+    
     if (!roomName.trim()) {
-      toast.error("Please enter a room name");
-      return;
+      newErrors.roomName = "Room name is required";
+      hasError = true;
     }
     
     if (!participants.trim()) {
-      toast.error("Please enter at least one participant email");
+      newErrors.participants = "At least one participant email is required";
+      hasError = true;
+    }
+    
+    if (hasError) {
+      setFormErrors(newErrors);
       return;
     }
     
@@ -274,23 +308,31 @@ export default function ChatRoom() {
         })
       });
   
-      if (!response.ok) {
-        throw new Error("Failed to create a new chat room");
-      }
-      
       const data = await response.json();
       
-      // Refetch all chatrooms
+      if (!response.ok) {
+        // Handle specific API errors
+        if (data.error) {
+          if (data.error.includes("participants")) {
+            setFormErrors(prev => ({ ...prev, participants: data.error }));
+          } else if (data.error.includes("room")) {
+            setFormErrors(prev => ({ ...prev, roomName: data.error }));
+          } else {
+            // Generic error
+            toast.error(data.error || "Failed to create a new chat room");
+          }
+          return;
+        } else {
+          throw new Error("Failed to create a new chat room");
+        }
+      }
+      
+      // Success path
       await fetchChatrooms();
-      
-      // Select the new chatroom
       setSelectedChatroomId(data.id);
-      
-      // Reset form
       setParticipants("");
       setRoomName("");
       setShowNewRoomForm(false);
-      
       toast.success("New chat room created");
       
       // Focus the input field
@@ -318,7 +360,7 @@ export default function ChatRoom() {
     try {
       setIsLoading(true);
       
-      const response = await fetch(`${API_BASE_URL}/api/chatroom/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/chatroom/delete/${id}`, {
         method: "DELETE",
         headers: { 
           "Content-Type": "application/json",
@@ -356,357 +398,344 @@ export default function ChatRoom() {
       // Extract just the usernames or emails
       return chatroom.participants
         .map(p => p.username || p.email)
-        .filter(p => p !== localStorage.getItem("user_email"))
+        .filter(p => p !== currentUser)
         .join(", ");
     }
     
     return `Chat Room ${chatroom.id.substring(0, 8)}`;
   };
 
-  // Custom components for ReactMarkdown
-  const MarkdownComponents = {
-    p: ({ node, ...props }) => <p className="mb-4 last:mb-0" {...props} />,
-    a: ({ node, ...props }) => <a className="text-blue-600 hover:underline" {...props} />,
-    code: ({ node, inline, ...props }) => 
-      inline 
-        ? <code className="px-1 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700 text-sm" {...props} />
-        : <pre className="p-4 rounded bg-zinc-100 dark:bg-zinc-700 overflow-x-auto my-4"><code {...props} /></pre>,
-    h1: ({ node, ...props }) => <h1 className="text-2xl font-bold mb-4 mt-6" {...props} />,
-    h2: ({ node, ...props }) => <h2 className="text-xl font-bold mb-3 mt-5" {...props} />,
-    h3: ({ node, ...props }) => <h3 className="text-lg font-bold mb-3 mt-4" {...props} />,
-    ul: ({ node, ...props }) => <ul className="list-disc pl-5 mb-4" {...props} />,
-    ol: ({ node, ...props }) => <ol className="list-decimal pl-5 mb-4" {...props} />,
-    blockquote: ({ node, ...props }) => <blockquote className="border-l-4 border-zinc-300 dark:border-zinc-600 pl-4 italic my-4" {...props} />
+  const formatTime = (timestamp) => {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Render skeletons while loading
-  const renderSkeletons = () => {
-    return Array.from({ length: 5 }).map((_, index) => (
-      <div key={`skeleton-${index}`} className="p-2">
-        <Skeleton className="h-12 w-full rounded" />
-      </div>
-    ));
-  };
-
-  // Render chatrooms list
-  const renderChatrooms = () => {
-    if (chatrooms.length === 0) {
-      return (
-        <div className="py-8 text-center">
-          <p className="text-zinc-500 dark:text-zinc-400 text-sm">
-            No chat rooms yet
-          </p>
-          <Button 
-            variant="link" 
-            onClick={() => setShowNewRoomForm(true)}
-            className="mt-2 text-blue-600 dark:text-blue-400"
-          >
-            Create your first chat room
-          </Button>
-        </div>
-      );
+  // Function to check if a message is from the current user
+  const isMessageFromCurrentUser = (msg) => {
+    if (!msg || !msg.sender) return false;
+    
+    // Get current user from state
+    const user = currentUser;
+    if (!user) return false;
+    
+    // Handle different message formats that may come from WebSocket vs API
+    let senderIdentifier;
+    
+    if (typeof msg.sender === 'string') {
+      // If sender is just a string (email or username)
+      senderIdentifier = msg.sender;
+    } else if (typeof msg.sender === 'object') {
+      // If sender is an object with email or username
+      senderIdentifier = msg.sender.email || msg.sender.username;
     }
-
-    return (
-      <div className="space-y-1">
-        {chatrooms.map((chatroom) => (
-          <motion.div
-            key={chatroom.id}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <div
-              onClick={() => handleSelectChatroom(chatroom.id)}
-              className={cn(
-                "flex items-center justify-between p-2 rounded-md cursor-pointer group",
-                selectedChatroomId === chatroom.id
-                  ? "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200"
-                  : "hover:bg-zinc-100 dark:hover:bg-zinc-700/50"
-              )}
-            >
-              <div className="flex items-center gap-3 overflow-hidden">
-                <div className={cn(
-                  "flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full",
-                  selectedChatroomId === chatroom.id
-                    ? "bg-blue-200 dark:bg-blue-800 text-blue-700 dark:text-blue-200"
-                    : "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200"
-                )}>
-                  <Users className="h-4 w-4" />
-                </div>
-                <div className="overflow-hidden">
-                  <p className="text-sm font-medium truncate">
-                    {getChatroomTitle(chatroom)}
-                  </p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {new Date(chatroom.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => deleteChatroom(chatroom.id, e)}
-                className="opacity-0 group-hover:opacity-100 h-8 w-8 text-zinc-500 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30"
-              >
-                <Trash className="h-4 w-4" />
-              </Button>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-    );
-  };
-
-  // Render new chatroom form
-  const renderNewChatroomForm = () => (
-    <div className="p-4 space-y-3 bg-zinc-50 dark:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700">
-      <h3 className="font-medium">Create New Chat Room</h3>
-      <div>
-        <label className="text-xs text-zinc-500 dark:text-zinc-400 block mb-1">
-          Room Name <span className="text-red-500">*</span>
-        </label>
-        <Input
-          type="text"
-          value={roomName}
-          onChange={(e) => setRoomName(e.target.value)}
-          placeholder="Enter room name"
-          className="text-sm"
-          required
-        />
-      </div>
-      <div>
-        <label className="text-xs text-zinc-500 dark:text-zinc-400 block mb-1">
-          Participants (comma-separated emails) <span className="text-red-500">*</span>
-        </label>
-        <Input
-          type="text"
-          value={participants}
-          onChange={(e) => setParticipants(e.target.value)}
-          placeholder="user1@example.com, user2@example.com"
-          className="text-sm"
-          required
-        />
-      </div>
-      <div className="flex gap-2 justify-end">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowNewRoomForm(false)}
-          disabled={isLoading}
-        >
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          onClick={createNewChatroom}
-          disabled={isLoading || !participants.trim() || !roomName.trim()}
-          className="bg-green-600 hover:bg-green-700 text-white"
-        >
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            "Create"
-          )}
-        </Button>
-      </div>
-    </div>
-  );
-
-  // Render empty state when no chatroom is selected
-  const renderEmptyState = () => (
-    <div className="h-full flex items-center justify-center">
-      <div className="text-center p-8 max-w-md">
-        <h3 className="text-xl font-semibold mb-2">
-          No chat room selected
-        </h3>
-        <p className="text-zinc-500 dark:text-zinc-400 mb-6">
-          Select an existing chat room or create a new one to start chatting.
-        </p>
-        <Button 
-          onClick={() => setShowNewRoomForm(true)} 
-          className="bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          Create New Chat Room
-        </Button>
-      </div>
-    </div>
-  );
-
-  // Render welcome message when chatroom has no messages
-  const renderWelcomeMessage = () => (
-    <div className="h-full flex items-center justify-center">
-      <div className="text-center p-8 max-w-md mx-auto">
-        <div className="bg-blue-100 dark:bg-blue-900/30 p-4 rounded-full inline-flex mb-4">
-          <Users className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-        </div>
-        <h3 className="text-xl font-semibold mb-2">
-          Start a new conversation
-        </h3>
-        <p className="text-zinc-500 dark:text-zinc-400 mb-6">
-          Type a message below to begin chatting.
-        </p>
-      </div>
-    </div>
-  );
-
-  // Render messages in a chatroom
-  const renderMessages = () => {
-    if (!messages || messages.length === 0) {
-      return renderWelcomeMessage();
-    }
-
-    const currentUser = localStorage.getItem("user_email") || "";
-
-    return (
-      <div className="space-y-4">
-        {messages.map((msg) => {
-          const isCurrentUser = msg.sender?.email === currentUser;
-          
-          return (
-            <motion.div 
-              key={msg.id || `msg-${msg.created_at}`}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-              className={`flex items-start gap-3 ${isCurrentUser ? 'justify-end' : ''}`}
-            >
-              {!isCurrentUser && (
-                <Avatar className="h-8 w-8 bg-purple-600 text-white">
-                  <span className="text-xs">{msg.sender?.username?.charAt(0).toUpperCase()}</span>
-                </Avatar>
-              )}
-              
-              <div className={cn(
-                "py-2 px-4 rounded-lg shadow-sm max-w-[70%]",
-                isCurrentUser 
-                  ? "bg-blue-600 text-white" 
-                  : "bg-white dark:bg-zinc-800"
-              )}>
-                {!isCurrentUser && (
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                    {msg.sender.username}
-                  </p>
-                )}
-                <div className="prose dark:prose-invert prose-sm max-w-none">
-                  <ReactMarkdown 
-                    remarkPlugins={[remarkGfm]}
-                    components={MarkdownComponents}
-                  >
-                    {msg.message}
-                  </ReactMarkdown>
-                </div>
-                <p className="text-xs text-right mt-1 opacity-70">
-                  {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                </p>
-              </div>
-              
-              {isCurrentUser && (
-                <Avatar className="h-8 w-8 bg-blue-600 text-white">
-                  <span className="text-xs">{currentUser.charAt(0).toUpperCase()}</span>
-                </Avatar>
-              )}
-            </motion.div>
-          );
-        })}
-        <div ref={chatEndRef} />
-      </div>
-    );
+    
+    // Check if the sender matches the current user's email or username
+    // Handle cases where currentUser might be an email or just username
+    return user === senderIdentifier || 
+           user.includes(senderIdentifier) || 
+           senderIdentifier.includes(user);
   };
 
   return (
-    <div className="flex flex-col h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-50">
+    <div className="flex flex-col h-screen">
       <Navbar />
-
-      <div className="flex flex-grow overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-80 bg-white dark:bg-zinc-800 border-r border-zinc-200 dark:border-zinc-700 overflow-y-auto transition-all">
-          <div className="p-4">
-            <Button
-              onClick={() => setShowNewRoomForm(!showNewRoomForm)}
-              disabled={isLoading}
-              className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white"
-            >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  <PlusCircle className="h-4 w-4" />
-                  <span>New Chat Room</span>
-                </>
-              )}
-            </Button>
+      
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar (Chat rooms list) - Fixed width */}
+        <div className="w-64 flex-shrink-0 flex flex-col bg-slate-800 text-white border-r border-slate-700">
+          {/* Sidebar header */}
+                <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="text-black border-slate-600 hover:bg-slate-700 w-full"
+                  onClick={() => setShowNewRoomForm(true)}
+                >
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Create New Chatroom
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  className="text-white ml-1 hover:bg-slate-700"
+                  onClick={refreshChatrooms}
+                  disabled={refreshingChatrooms}
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshingChatrooms ? 'animate-spin' : ''}`} />
+                </Button>
+                </div>
+                
+                {/* Chat rooms container */}
+          <div className="flex-1 overflow-y-auto p-2">
+            {isInitialLoading ? (
+              // Loading skeletons
+              Array(5).fill(0).map((_, i) => (
+                <div key={i} className="flex items-center space-x-2 p-3 mb-2 rounded-lg">
+                  <Skeleton className="h-10 w-10 rounded-full bg-slate-600" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-32 bg-slate-600" />
+                  </div>
+                </div>
+              ))
+            ) : chatrooms.length === 0 ? (
+              <div className="text-center py-10 text-slate-400">
+                <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No chat rooms yet</p>
+                <p className="text-xs mt-1">Create your first chat room</p>
+              </div>
+            ) : (
+              // Chat room list
+              chatrooms.map((room) => (
+                <motion.div
+                  key={room.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className={cn(
+                    "flex items-center p-3 rounded-lg mb-1 cursor-pointer hover:bg-slate-700 transition",
+                    selectedChatroomId === room.id ? "bg-indigo-900" : ""
+                  )}
+                  onClick={() => handleSelectChatroom(room.id)}
+                >
+                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 text-white flex items-center justify-center mr-3 flex-shrink-0 shadow-md">
+                    {room.room_name ? room.room_name.substring(0, 2).toUpperCase() : 'CR'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{getChatroomTitle(room)}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="flex-shrink-0 text-slate-400 hover:text-red-400 hover:bg-slate-700"
+                    onClick={(e) => deleteChatroom(room.id, e)}
+                  >
+                    <Trash className="h-4 w-4" />
+                  </Button>
+                </motion.div>
+              ))
+            )}
           </div>
-          
-          {showNewRoomForm && (
-            <div className="px-4 mb-4">
-              {renderNewChatroomForm()}
-            </div>
-          )}
-          
-          <div className="px-3 pb-2">
-            <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 px-2 mb-2">
-              Chat Rooms
-            </h2>
-            
-            {isInitialLoading ? renderSkeletons() : renderChatrooms()}
-          </div>
-        </aside>
+        </div>
 
         {/* Main content */}
-        <main className="flex-1 flex flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-900">
+        <div className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-900">
           {selectedChatroom ? (
             <>
               {/* Chat header */}
-              <div className="p-4 border-b border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                    <Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 flex items-center justify-between shadow-sm">
+                <div className="flex items-center">
+                  <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 text-white flex items-center justify-center mr-3">
+                    {selectedChatroom.room_name ? selectedChatroom.room_name.substring(0, 2).toUpperCase() : 'CR'}
                   </div>
-                  <div>
-                    <h3 className="font-medium">{getChatroomTitle(selectedChatroom)}</h3>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {selectedChatroom.participants?.length || 0} participants
-                    </p>
-                  </div>
+                  <h2 className="font-semibold text-lg">{getChatroomTitle(selectedChatroom)}</h2>
                 </div>
               </div>
-              
-              {/* Messages area */}
-              <div className="flex-1 overflow-y-auto p-4">
-                {renderMessages()}
+
+              {/* Messages container */}
+              <div className="flex-1 overflow-y-auto p-4 bg-slate-50 dark:bg-slate-900">
+                {isLoading && messages.length === 0 ? (
+                  // Loading skeletons for messages
+                  Array(5).fill(0).map((_, i) => (
+                    <div key={i} className={`flex items-start mb-4 ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
+                      {i % 2 === 0 && <Skeleton className="h-8 w-8 rounded-full mr-2 bg-slate-300 dark:bg-slate-700" />}
+                      <div>
+                        <Skeleton className="h-3 w-24 mb-1 bg-slate-300 dark:bg-slate-700" />
+                        <Skeleton className="h-16 w-64 rounded-lg bg-slate-300 dark:bg-slate-700" />
+                      </div>
+                      {i % 2 !== 0 && <Skeleton className="h-8 w-8 rounded-full ml-2 bg-slate-300 dark:bg-slate-700" />}
+                    </div>
+                  ))
+                ) : messages.length === 0 ? (
+                  <div className="text-center py-16 text-slate-500 dark:text-slate-400">
+                    <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                    <p>No messages yet. Start the conversation!</p>
+                  </div>
+                ) : (
+                  // Messages
+                  messages.map((msg, index) => {
+                    const isFromCurrentUser = isMessageFromCurrentUser(msg);
+                    
+                    return (
+                      <motion.div
+                        key={msg.id || index}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className={cn(
+                          "mb-4 flex",
+                          isFromCurrentUser ? "justify-end" : "justify-start"
+                        )}
+                      >
+                        {!isFromCurrentUser && (
+                          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-white mr-2 mt-1 shadow-sm">
+                            <User className="h-4 w-4" />
+                          </div>
+                        )}
+                        <div className="max-w-md">
+                          <div className="text-xs text-slate-500 mb-1">
+                            {!isFromCurrentUser && (
+                              <span className="font-medium mr-2">
+                                {typeof msg.sender === 'string' 
+                                  ? msg.sender?.split('@')[0] 
+                                  : (msg.sender?.email?.split('@')[0] || "User")}
+                              </span>
+                            )}
+                            <span>{formatTime(msg.created_at)}</span>
+                          </div>
+                          <div className={cn(
+                            "rounded-lg p-3 shadow-sm",
+                            isFromCurrentUser 
+                              ? "bg-indigo-600 text-white" 
+                              : "bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                          )}>
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                            >
+                              {msg.message}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                        {isFromCurrentUser && (
+                          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white ml-2 mt-1 shadow-sm">
+                            <User className="h-4 w-4" />
+                          </div>
+                        )}
+                      </motion.div>
+                    );
+                  })
+                )}
+                <div ref={chatEndRef} />
               </div>
-              
-              {/* Input area */}
-              <div className="p-4 border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
-                <div className="flex gap-2">
+
+              {/* Message input */}
+              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 shadow-md">
+                <div className="flex space-x-2">
                   <Input
                     ref={inputRef}
-                    type="text"
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && !isLoading && sendMessage()}
+                    onKeyDown={(e) => e.key === "Enter" && sendMessage(e)}
                     placeholder="Type your message..."
-                    className="flex-grow py-6 text-base"
+                    className="flex-1 bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600"
                     disabled={isLoading}
                   />
-                  <Button 
-                    onClick={sendMessage} 
-                    disabled={isLoading || !message.trim()} 
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  <Button
+                    onClick={sendMessage}
+                    disabled={isLoading || !message.trim()}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
                   >
                     {isLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <Send className="h-4 w-4" />
+                      <>
+                        <Send className="h-4 w-4 mr-2" />
+                        Send
+                      </>
                     )}
                   </Button>
                 </div>
               </div>
             </>
-          ) : renderEmptyState()}
-        </main>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-center p-4">
+              <div className="h-20 w-20 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center mb-6 shadow-lg">
+                <MessageSquare className="h-10 w-10 text-white" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">No Chat Room Selected</h2>
+              <p className="text-slate-500 max-w-md mb-6">
+                Select an existing chat room or create a new one to start messaging
+              </p>
+              <Button 
+                onClick={() => setShowNewRoomForm(true)}
+                size="lg"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                <PlusCircle className="h-5 w-5 mr-2" />
+                Create New Chat Room
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* New Chat Room Modal */}
+      {showNewRoomForm && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="bg-white dark:bg-slate-800 rounded-lg shadow-lg max-w-md w-full p-6"
+    >
+      <h2 className="text-xl font-bold mb-4">Create New Chat Room</h2>
+      
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Room Name
+          </label>
+          <Input
+            value={roomName}
+            onChange={(e) => setRoomName(e.target.value)}
+            placeholder="e.g., Team Discussion"
+            className={`bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 ${
+              formErrors.roomName ? "border-red-500" : ""
+            }`}
+          />
+          {formErrors.roomName && (
+            <p className="text-xs text-red-500 mt-1">{formErrors.roomName}</p>
+          )}
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Participants (comma-separated emails)
+          </label>
+          <Input
+            value={participants}
+            onChange={(e) => setParticipants(e.target.value)}
+            placeholder="e.g., user1@example.com, user2@example.com"
+            className={`bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 ${
+              formErrors.participants ? "border-red-500" : ""
+            }`}
+          />
+          {formErrors.participants ? (
+            <p className="text-xs text-red-500 mt-1">{formErrors.participants}</p>
+          ) : (
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Enter email addresses of participants you want to invite
+            </p>
+          )}
+        </div>
+        
+        <div className="flex justify-end space-x-2 pt-4">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setShowNewRoomForm(false);
+              setFormErrors({ roomName: "", participants: "" });
+            }}
+            className="border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={createNewChatroom}
+            disabled={isLoading}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <PlusCircle className="h-4 w-4 mr-2" />
+            )}
+            Create Room
+          </Button>
+        </div>
+      </div>
+    </motion.div>
+  </div>
+)}
     </div>
   );
 }
